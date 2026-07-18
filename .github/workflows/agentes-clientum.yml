@@ -1,0 +1,53 @@
+name: Agentes Clientum — Loop Autónomo
+
+# Corre cada 15 min y también se puede disparar a mano.
+# No requiere presupuesto: usa el free tier de GitHub Actions + Gemini API.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+# Necesario para que el bot pueda comentar, etiquetar y cerrar issues.
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: agentes-clientum-loop
+  cancel-in-progress: false
+
+jobs:
+  correr-agentes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias (nodemailer para notificaciones)
+        run: npm install nodemailer --no-save
+
+      - name: Ejecutar agentes sobre issues abiertos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # Notificaciones por email (opcional — si no están seteados, se omite)
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+        run: node scripts/run-agentes.mjs
+
+      - name: Commitear memoria.md actualizada
+        run: |
+          git config user.name "orquestador-ia"
+          git config user.email "agentes@clientum.com.ar"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore(agentes): actualizar memoria.md [skip ci]"
+          git push
